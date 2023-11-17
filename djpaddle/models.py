@@ -197,6 +197,7 @@ class Subscription(PaddleBaseModel):
                 data[key] = value
 
         data = convert_datetime_strings_to_datetimes(data, cls)
+        data = convert_booleans_from_json_to_python(data, cls)
 
         return data
 
@@ -245,6 +246,21 @@ if settings.DJPADDLE_LINK_STALE_SUBSCRIPTIONS:
             queryset = Subscription.objects.filter(subscriber=None)
             queryset = mappers.get_subscriptions_by_subscriber(instance, queryset)
             queryset.update(subscriber=instance)
+
+
+def convert_booleans_from_json_to_python(data, model):
+    boolean_fields = [field.name for field in model._meta.get_fields() if isinstance(field, models.BooleanField)]
+    for field in boolean_fields:
+        if field not in data:
+            continue
+
+        # If the field contains "true" or "false", replace with the python equivalent
+        if data[field] in ["true", "false"]:
+            data[field] = data[field] == "true"
+        else:
+            data[field] = field.to_python(data[field])
+
+    return data
 
 
 def convert_datetime_strings_to_datetimes(data, model):
