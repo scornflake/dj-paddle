@@ -162,6 +162,10 @@ class Subscription(PaddleBaseModel):
     unit_price = models.FloatField()
     update_url = models.URLField()
 
+    paused_at = models.DateTimeField(null=True)
+    paused_from = models.DateTimeField(null=True)
+    paused_reason = models.CharField(blank=True, default="", max_length=255)
+
     class Meta:
         ordering = ["created_at"]
 
@@ -211,7 +215,11 @@ class Subscription(PaddleBaseModel):
             return cls.objects.create(pk=pk, **data)
 
         if subscription.event_time < data["event_time"]:
-            cls.objects.filter(pk=pk).update(**data)
+            the_object = cls.objects.filter(pk=pk)
+            the_object.update(**data)
+            return the_object
+
+        return None
 
     def __str__(self):
         return "{}:{}".format(self.subscriber, self.id)
@@ -249,18 +257,37 @@ if settings.DJPADDLE_LINK_STALE_SUBSCRIPTIONS:
 
 
 def convert_booleans_from_json_to_python(data, model):
-    boolean_fields = [field.name for field in model._meta.get_fields() if isinstance(field, models.BooleanField)]
+    boolean_fields = [field for field in model._meta.get_fields() if isinstance(field, models.BooleanField)]
     for field in boolean_fields:
-        if field not in data:
+        field_name = field.name
+        if field_name not in data:
             continue
 
         # If the field contains "true" or "false", replace with the python equivalent
-        if data[field] in ["true", "false"]:
-            data[field] = data[field] == "true"
+        if data[field_name] in ["true", "false"]:
+            data[field_name] = data[field_name] == "true"
         else:
-            data[field] = field.to_python(data[field])
+            data[field_name] = field.to_python(data[field_name])
 
     return data
+
+
+def convert_paddle_date_or_time_string_to_datetime(string_value):
+    if string_value is None:
+        return None
+
+    try:
+        converted_date_time = datetime.strptime(string_value, PADDLE_DATETIME_FORMAT)
+    except ValueError:
+        # Some fields such as next_bill_date should perhaps be
+        # a DateField not DatetimeField
+        converted_date_time = datetime.strptime(string_value, PADDLE_DATE_FORMAT)
+
+    if converted_date_time and djsettings.USE_TZ:
+        local_time_zone = timezone.get_default_timezone()
+        converted_date_time = timezone.make_aware(converted_date_time, local_time_zone)
+
+    return converted_date_time
 
 
 def convert_datetime_strings_to_datetimes(data, model):
@@ -269,15 +296,8 @@ def convert_datetime_strings_to_datetimes(data, model):
         if field not in data:
             continue
 
-        try:
-            data[field] = datetime.strptime(data[field], PADDLE_DATETIME_FORMAT)
-        except ValueError:
-            # Some fields such as next_bill_date should perhaps be
-            # a DateField not DatetimeField
-            data[field] = datetime.strptime(data[field], PADDLE_DATE_FORMAT)
-
-        if djsettings.USE_TZ:
-            local_time_zone = timezone.get_default_timezone()
-            data[field] = timezone.make_aware(data[field], local_time_zone)
+        converted = convert_paddle_date_or_time_string_to_datetime(data[field])
+        if converted:
+            data[field] = converted
 
     return data
