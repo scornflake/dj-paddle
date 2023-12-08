@@ -219,7 +219,7 @@ class Subscription(PaddleBaseModel):
             the_object.update(**data)
             return the_object
 
-        return None
+        return subscription
 
     def __str__(self):
         return "{}:{}".format(self.subscriber, self.id)
