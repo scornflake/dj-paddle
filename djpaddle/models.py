@@ -6,6 +6,7 @@ from django.conf import settings as djsettings
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
+from django.utils.timezone import is_naive
 from django.utils.translation import gettext_lazy as _
 from paddle import PaddleClient
 
@@ -130,12 +131,14 @@ class Subscription(PaddleBaseModel):
     STATUS_PAST_DUE = "past_due"
     STATUS_PAUSED = "paused"
     STATUS_DELETED = "deleted"
+    # STATUS_UNSPECIFIED = "unspecified"
     STATUS_CHOICES = (
         (STATUS_ACTIVE, _("active")),
         (STATUS_TRIALING, _("trialing")),
         (STATUS_PAST_DUE, _("past due")),
         (STATUS_PAUSED, _("paused")),
         (STATUS_DELETED, _("deleted")),
+        # (STATUS_UNSPECIFIED, _("unspecified")),
     )
 
     id = models.CharField(max_length=64, primary_key=True)
@@ -284,7 +287,10 @@ def convert_paddle_date_or_time_string_to_datetime(string_value):
         converted_date_time = datetime.strptime(string_value, PADDLE_DATE_FORMAT)
 
     if converted_date_time and djsettings.USE_TZ:
-        local_time_zone = timezone.get_default_timezone()
+        # this doesn't make sense. make_aware won't CONVERT the time. It just forces the tz
+        # Instead, force the date to be in UTC, which is what Paddle actually sends
+        # local_time_zone = timezone.get_default_timezone()
+        local_time_zone = timezone.utc
         converted_date_time = timezone.make_aware(converted_date_time, local_time_zone)
 
     return converted_date_time
